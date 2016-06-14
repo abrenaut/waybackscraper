@@ -40,8 +40,7 @@ def scrape_archives(url, scrape_function, min_date, max_date, timedelta=None, co
     # Get the list of archive available for the given url
     archives = list_archives(url, min_date, max_date)
 
-    # Filter the archives to keep only the one between min_date and max_date and to have a minimum timedelta between
-    # each archive
+    # Filter the archives to have a minimum timedelta between each archive
     archives = [archive for archive in archive_delta_filter(archives, timedelta)]
 
     # Scrape each archives asynchronously and gather the results
@@ -57,7 +56,7 @@ async def run_scraping(archives, scrape_function, concurrency):
     Run the scraping function asynchronously on the given archives.
     The concurrency parameter limits the number of concurrent connections to the web archive.
     """
-    # Use a semaphore to limit the number of concurrent connections to the web archive
+    # Use a semaphore to limit the number of concurrent connections to the internet archive
     sem = asyncio.Semaphore(concurrency)
 
     # Create scraping tasks for each archive
