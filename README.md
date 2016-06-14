@@ -12,10 +12,10 @@ To install, simply:
  
     pip install waybackscraper
 
-To download one archive of google.com per year since the year 2000:
+To download one archive per year of google.com between 2000 and 2005:
 
     waybackscraper "http://google.com" -d 365 -from 2000-01-01 -to 2005-01-01
-    
+
 To download the comics previously featured on Cyanide and Happiness:
 
     waybackscraper "http://explosm.net" -x "//img[@id=\"featured-comic\"]"
