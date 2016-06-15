@@ -31,7 +31,7 @@ def parse_args():
                         help="A xpath expression to use for the scraping. "
                              "If the expression matches images, the images are downloaded. "
                              "Otherwise the content of the elements matched is downloaded.")
-    parser.add_argument("-c", "--concurrency", type=int, default=10,
+    parser.add_argument("-c", "--concurrency", type=int, default=2,
                         help="Maximum number of concurrent requests to the wayback machine")
     parser.add_argument("-d", "--delta", type=int, default=1, help="Minimum number of days between two archives")
     parser.add_argument("-q", "--quiet", action="store_true", help="Don't print progress")
@@ -50,8 +50,8 @@ def main():
 
     logging.basicConfig(level=(logging.WARN if args.quiet else logging.INFO))
 
-    # Don't allow more than 20 concurrent requests to the wayback machine
-    concurrency = min(args.concurrency, 20)
+    # Don't allow more than 10 concurrent requests to the wayback machine
+    concurrency = min(args.concurrency, 10)
 
     # Scrape results are stored in a temporary folder if no folder specified
     target_folder = args.target_folder if args.target_folder else tempfile.gettempdir()

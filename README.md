@@ -63,7 +63,7 @@ To download dependencies:
                             downloaded. (default: None)
       -c CONCURRENCY, --concurrency CONCURRENCY
                             Maximum number of concurrent requests to the wayback
-                            machine (default: 10)
+                            machine (default: 2)
       -d DELTA, --delta DELTA
                             Minimum number of days between two archives (default:
                             1)
