@@ -17,7 +17,7 @@ class TestWayback(unittest.TestCase):
 
         # List the snapshot found in the test memento
         snapshots = wayback.list_archives('', datetime(2015, 1, 1, 0, 0),
-                                          datetime(2017, 1, 1, 0, 0))
+                                          datetime(2017, 1, 1, 0, 0), '')
 
         self.assertEquals(len(snapshots), 840)
 

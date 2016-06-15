@@ -10,7 +10,7 @@ logger = logging.getLogger('waybackscraper.scraper')
 
 
 class Scraper:
-    def __init__(self, target_folder, xpath):
+    def __init__(self, target_folder, xpath, user_agent):
         """
         :param target_folder: The folder where scrape results are stored
         :param xpath: A xpath expression to use when scraping
@@ -18,6 +18,7 @@ class Scraper:
         """
         self.target_folder = target_folder
         self.xpath = xpath
+        self.user_agent = user_agent
 
     async def scrape(self, archive, content):
         """
@@ -44,7 +45,7 @@ class Scraper:
                         disassembled = parse.urlparse(match.get('src'))
                         filename = basename(disassembled.path)
                         target_file_path = join(self.target_folder, archive.timestamp + filename)
-                        await download_img(match.get('src'), target_file_path)
+                        await self.download_img(match.get('src'), target_file_path)
                     # Otherwise, add the element to the result
                     else:
                         result += lxml.html.tostring(match).decode('utf-8')
@@ -58,13 +59,12 @@ class Scraper:
             with open(output_file_path, 'w') as output_file:
                 output_file.write(result)
 
-
-async def download_img(img_url, target_file_path):
-    """
-    Download an image asynchronously
-    """
-    async with aiohttp.ClientSession() as session:
-        async with session.get(img_url) as response:
-            response = await response.read()
-            with open(target_file_path, 'wb') as target_file:
-                target_file.write(response)
+    async def download_img(self, img_url, target_file_path):
+        """
+        Download an image asynchronously
+        """
+        async with aiohttp.ClientSession(headers={'User-Agent': self.user_agent}) as session:
+            async with session.get(img_url) as response:
+                response = await response.read()
+                with open(target_file_path, 'wb') as target_file:
+                    target_file.write(response)

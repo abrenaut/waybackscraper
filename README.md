@@ -71,3 +71,6 @@ To download dependencies:
       -r TARGET_FOLDER, --target-folder TARGET_FOLDER
                             The folder where scraped images are stored (default:
                             Temporary folder) (default: None)
+      -u USER_AGENT, --user-agent USER_AGENT
+                            The user agent used when querying the Internet Archive
+                            (default: waybackscraper)                            

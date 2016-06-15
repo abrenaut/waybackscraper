@@ -30,7 +30,7 @@ class Archive:
         self.url = WEB_ARCHIVE_TEMPLATE.format(timestamp=timestamp, url=url)
 
 
-def scrape_archives(url, scrape_function, min_date, max_date, timedelta=None, concurrency=5):
+def scrape_archives(url, scrape_function, min_date, max_date, user_agent, timedelta=None, concurrency=5):
     """
     Scrape the archives of the given URL.
     The min_date and start_date parameters allow to restrict the archives to a given period.
@@ -38,20 +38,20 @@ def scrape_archives(url, scrape_function, min_date, max_date, timedelta=None, co
     The concurrency parameter limits the number of concurrent connections to the web archive.
     """
     # Get the list of archive available for the given url
-    archives = list_archives(url, min_date, max_date)
+    archives = list_archives(url, min_date, max_date, user_agent)
 
     # Filter the archives to have a minimum timedelta between each archive
     archives = [archive for archive in archive_delta_filter(archives, timedelta)]
 
     # Scrape each archives asynchronously and gather the results
     loop = asyncio.get_event_loop()
-    future = asyncio.ensure_future(run_scraping(archives, scrape_function, concurrency))
+    future = asyncio.ensure_future(run_scraping(archives, scrape_function, concurrency, user_agent))
     result = loop.run_until_complete(future)
 
     return result
 
 
-async def run_scraping(archives, scrape_function, concurrency):
+async def run_scraping(archives, scrape_function, concurrency, user_agent):
     """
     Run the scraping function asynchronously on the given archives.
     The concurrency parameter limits the number of concurrent connections to the web archive.
@@ -60,7 +60,7 @@ async def run_scraping(archives, scrape_function, concurrency):
     sem = asyncio.Semaphore(concurrency)
 
     # Create scraping tasks for each archive
-    tasks = [scrape_archive(archive, scrape_function, sem) for archive in archives]
+    tasks = [scrape_archive(archive, scrape_function, sem, user_agent) for archive in archives]
 
     # Gather each scraping result
     responses = await asyncio.gather(*tasks)
@@ -69,7 +69,7 @@ async def run_scraping(archives, scrape_function, concurrency):
     return {response[0]: response[1] for response in responses if response[1] is not None}
 
 
-async def scrape_archive(archive, scrape_function, sem):
+async def scrape_archive(archive, scrape_function, sem, user_agent):
     """
     Download the archive and run the scraping function on the archive content.
     Returns a tuple containing the scraped archive and the result of the scraping. If the scraping failed, the result
@@ -83,7 +83,7 @@ async def scrape_archive(archive, scrape_function, sem):
             logger.info('Scraping the archive {archive_url}'.format(archive_url=archive.url))
 
             # Download the archive content
-            async with aiohttp.ClientSession() as session:
+            async with aiohttp.ClientSession(headers={'User-Agent': user_agent}) as session:
                 async with session.get(archive.url) as response:
                     response = await response.read()
 
@@ -103,7 +103,7 @@ async def scrape_archive(archive, scrape_function, sem):
     return archive, scrape_result
 
 
-def list_archives(url, min_date, max_date):
+def list_archives(url, min_date, max_date, user_agent):
     """
     List the available archive between min_date and max_date for the given URL
     """
@@ -115,7 +115,7 @@ def list_archives(url, min_date, max_date):
                   'from': min_date.strftime(WEB_ARCHIVE_TIMESTAMP_FORMAT),
                   'to': max_date.strftime(WEB_ARCHIVE_TIMESTAMP_FORMAT)}
     cdx_url = WEB_ARCHIVE_CDX_TEMPLATE.format(params=urlencode(parameters))
-    req = Request(cdx_url, None, {'User-Agent': 'Mozilla/5.0'})
+    req = Request(cdx_url, None, {'User-Agent': user_agent})
     memento_json = urlopen(req).read().decode("utf-8")
 
     # Parse the json response

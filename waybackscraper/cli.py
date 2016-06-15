@@ -37,6 +37,8 @@ def parse_args():
     parser.add_argument("-q", "--quiet", action="store_true", help="Don't print progress")
     parser.add_argument("-r", "--target-folder",
                         help="The folder where scraping results are stored (default: Temporary folder)")
+    parser.add_argument("-u", "--user-agent",
+                        help="The user agent used when querying the Internet Archive", default='waybackscraper')
 
     args = parser.parse_args()
 
@@ -60,7 +62,8 @@ def main():
     to_date = datetime.strptime(args.to_date, CLI_DATE_FORMAT)
 
     # The scraper downloads the elements matching the given xpath expression in the target folder
-    scraper = Scraper(target_folder, args.xpath)
+    scraper = Scraper(target_folder, args.xpath, args.user_agent)
 
     # Launch the scraping using the scraper previously instantiated
-    scrape_archives(args.website_url, scraper.scrape, from_date, to_date, timedelta(days=args.delta), concurrency)
+    scrape_archives(args.website_url, scraper.scrape, from_date, to_date, args.user_agent, timedelta(days=args.delta),
+                    concurrency)
