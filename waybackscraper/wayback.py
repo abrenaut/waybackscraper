@@ -5,10 +5,10 @@ import re
 import asyncio
 import aiohttp
 import json
+from datetime import datetime
 from urllib.parse import urlencode
 from urllib.request import urlopen, Request
 from urllib.error import HTTPError
-from datetime import datetime
 from .exceptions import ScrapeError
 
 logger = logging.getLogger('waybackscraper.wayback')
@@ -19,18 +19,7 @@ WEB_ARCHIVE_URL = 'http://web.archive.org'
 WEB_ARCHIVE_TEMPLATE = "http://web.archive.org/web/{timestamp}/{url}"
 
 
-class Archive:
-    """
-    A website archive on the wayback machine
-    """
-
-    def __init__(self, timestamp, url):
-        self.timestamp = timestamp
-        self.date = datetime.strptime(timestamp, WEB_ARCHIVE_TIMESTAMP_FORMAT)
-        self.url = WEB_ARCHIVE_TEMPLATE.format(timestamp=timestamp, url=url)
-
-
-def scrape_archives(url, scrape_function, min_date, max_date, user_agent, timedelta=None, concurrency=5):
+def scrape_archives(url, scrape_function, min_date, max_date, user_agent, min_timedelta=None, concurrency=5):
     """
     Scrape the archives of the given URL.
     The min_date and start_date parameters allow to restrict the archives to a given period.
@@ -38,20 +27,26 @@ def scrape_archives(url, scrape_function, min_date, max_date, user_agent, timede
     The concurrency parameter limits the number of concurrent connections to the web archive.
     """
     # Get the list of archive available for the given url
-    archives = list_archives(url, min_date, max_date, user_agent)
+    archive_timestamps = list_archive_timestamps(url, min_date, max_date, user_agent)
 
-    # Filter the archives to have a minimum timedelta between each archive
-    archives = [archive for archive in archive_delta_filter(archives, timedelta)]
+    # Filter the timestamps to have a minimum timedelta between each timestamp
+    if min_timedelta and len(archive_timestamps):
+        archive_timestamps = timedelta_filter(archive_timestamps, min_timedelta)
+
+    loop = asyncio.get_event_loop()
 
     # Scrape each archives asynchronously and gather the results
-    loop = asyncio.get_event_loop()
-    future = asyncio.ensure_future(run_scraping(archives, scrape_function, concurrency, user_agent))
-    result = loop.run_until_complete(future)
+    scraping_task = loop.create_task(run_scraping(url, archive_timestamps, scrape_function, concurrency, user_agent))
 
-    return result
+    try:
+        loop.run_until_complete(scraping_task)
+    finally:
+        loop.close()
+
+    return scraping_task.result()
 
 
-async def run_scraping(archives, scrape_function, concurrency, user_agent):
+async def run_scraping(url, timestamps, scrape_function, concurrency, user_agent):
     """
     Run the scraping function asynchronously on the given archives.
     The concurrency parameter limits the number of concurrent connections to the web archive.
@@ -59,95 +54,101 @@ async def run_scraping(archives, scrape_function, concurrency, user_agent):
     # Use a semaphore to limit the number of concurrent connections to the internet archive
     sem = asyncio.Semaphore(concurrency)
 
-    # Create scraping tasks for each archive
-    tasks = [scrape_archive(archive, scrape_function, sem, user_agent) for archive in archives]
+    # Use one session to benefit from connection pooling
+    async with aiohttp.ClientSession(headers={'User-Agent': user_agent}) as session:
+        # Create scraping coroutines for each archive
+        coroutines = [scrape_archive(session, url, timestamp, scrape_function, sem) for timestamp in timestamps]
 
-    # Gather each scraping result
-    responses = await asyncio.gather(*tasks)
+        # Wait for coroutines to finish and gather the results
+        results = await asyncio.gather(*coroutines)
 
     # Compile each valid scraping results in a dictionary
-    return {response[0]: response[1] for response in responses if response[1] is not None}
+    return {timestamp: result for timestamp, result in results if result is not None}
 
 
-async def scrape_archive(archive, scrape_function, sem, user_agent):
+async def scrape_archive(session, url, archive_timestamp, scrape_function, sem):
     """
     Download the archive and run the scraping function on the archive content.
     Returns a tuple containing the scraped archive and the result of the scraping. If the scraping failed, the result
     is None
     """
-    scrape_result = None
+    scraping_result = None
 
-    try:
-        # Limit the number of concurrent connections
-        with (await sem):
-            logger.info('Scraping the archive {archive_url}'.format(archive_url=archive.url))
+    # Limit the number of concurrent connections
+    with (await sem):
+        archive_url = get_archive_url(url, archive_timestamp)
 
-            # Download the archive content
-            async with aiohttp.ClientSession(headers={'User-Agent': user_agent}) as session:
-                async with session.get(archive.url) as response:
-                    response = await response.read()
+        logger.info('Scraping the archive {archive_url}'.format(archive_url=archive_url))
 
-                    # Transform relative URLs in the archive into absolute URLs
-                    response = to_absolute_urls(response, archive)
+        # Download the archive content
+        async with session.get(archive_url) as response:
+            try:
+                archive_content = await response.text(encoding="utf-8")
 
-                    # Scrape the archive content
-                    scrape_result = await scrape_function(archive, response)
+                # Transform relative URLs in the archive into absolute URLs
+                archive_content = to_absolute_urls(archive_content, archive_timestamp)
 
-    except ScrapeError as e:
-        logger.warn('Could not scrape the archive {url} : {msg}'.format(url=archive.url, msg=str(e)))
-    except HTTPError as e:
-        logger.warn('Could not download the archive {url} : {msg}'.format(url=archive.url, msg=str(e)))
-    except Exception as e:
-        logger.exception('Error while scraping the archive {url}'.format(url=archive.url, msg=str(e)))
+                # Scrape the archive content
+                scraping_result = await scrape_function(session, archive_url, archive_timestamp, archive_content)
+            except ScrapeError as e:
+                logger.warn('Could not scrape the archive {url} : {msg}'.format(url=archive_url, msg=str(e)))
+            except HTTPError as e:
+                logger.warn('Could not download the archive {url} : {msg}'.format(url=archive_url, msg=str(e)))
+            except Exception as e:
+                logger.exception('Error while scraping the archive {url} : {msg}'.format(url=archive_url, msg=str(e)))
 
-    return archive, scrape_result
+    return archive_timestamp, scraping_result
 
 
-def list_archives(url, min_date, max_date, user_agent):
+def list_archive_timestamps(url, min_date, max_date, user_agent):
     """
     List the available archive between min_date and max_date for the given URL
     """
     logger.info('Listing the archives for the url {url}'.format(url=url))
 
-    # Download the memento list
+    # Construct the URL used to download the memento list
     parameters = {'url': url,
                   'output': 'json',
                   'from': min_date.strftime(WEB_ARCHIVE_TIMESTAMP_FORMAT),
                   'to': max_date.strftime(WEB_ARCHIVE_TIMESTAMP_FORMAT)}
     cdx_url = WEB_ARCHIVE_CDX_TEMPLATE.format(params=urlencode(parameters))
+
     req = Request(cdx_url, None, {'User-Agent': user_agent})
-    memento_json = urlopen(req).read().decode("utf-8")
+    with urlopen(req) as cdx:
+        memento_json = cdx.read().decode("utf-8")
 
-    # Parse the json response
-    memento_list = json.loads(memento_json)
+        timestamps = []
+        # Ignore the first line which contains column names
+        for url_key, timestamp, original, mime_type, status_code, digest, length in json.loads(memento_json)[1:]:
+            # Ignore archives with a status code != OK
+            if status_code == '200':
+                timestamps.append(datetime.strptime(timestamp, WEB_ARCHIVE_TIMESTAMP_FORMAT))
 
-    # A row contains the following columns: "urlkey","timestamp","original","mimetype","statuscode","digest","length"
-    archives = [Archive(archive[1], url) for archive in memento_list[1:] if archive[4] == '200']
-
-    logger.info('Found {count} archives for the url {url}'.format(count=len(archives), url=url))
-
-    return archives
+    return timestamps
 
 
-def archive_delta_filter(archive_list, timedelta):
+def timedelta_filter(dates, timedelta):
     """
-    Make sure there is a minimum time delta between each archive
+    Make sure there is a minimum time delta between each date in the given list
     """
-    # Sort the list of archive by their date
-    archive_list.sort(key=lambda x: x.date)
-
-    # For each archive, make sure there is a minimum of days between the archive and the previous archive in the list
-    prev_date = None
-    for archive in archive_list:
-        if timedelta is None or prev_date is None or archive.date - prev_date > timedelta:
-            yield archive
-            prev_date = archive.date
+    filtered_dates = [dates[0]]
+    for date in sorted(dates[1:]):
+        if date - filtered_dates[-1] > timedelta:
+            filtered_dates.append(date)
+    return filtered_dates
 
 
-def to_absolute_urls(content, archive):
+def to_absolute_urls(content, archive_timestamp):
     """
     Preprend the Web Archive URL to each relative URLs found in the string passed as parameter and returns the result
     """
-    root_pat = re.compile(('([\'"])(/web/' + archive.timestamp + ')').encode('utf-8'))
-    content = re.sub(root_pat, (r"\1" + WEB_ARCHIVE_URL + r"\2").encode('utf-8'), content)
+    root_pat = re.compile(('([\'"])(/web/' + archive_timestamp.strftime(WEB_ARCHIVE_TIMESTAMP_FORMAT) + ')'))
+    content = re.sub(root_pat, r"\1" + WEB_ARCHIVE_URL + r"\2", content)
     return content
+
+
+def get_archive_url(url, timestamp):
+    """
+    Returns the archive url for the given url and timestamp
+    """
+    return WEB_ARCHIVE_TEMPLATE.format(timestamp=timestamp.strftime(WEB_ARCHIVE_TIMESTAMP_FORMAT), url=url)

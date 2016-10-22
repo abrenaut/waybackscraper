@@ -8,10 +8,12 @@ This project requires Python >= 3.5
 
 ## Installing 
 
-To install, simply:
+To install it, simply:
  
+    virtualenv /path/to/waybackscraper-venv
+    source /path/to/waybackscraper-venv/bin/activate
     pip install waybackscraper
-
+    
 To download one archive per year of google.com between 2000 and 2005:
 
     waybackscraper "http://google.com" -d 365 -from 2000-01-01 -to 2005-01-01
@@ -31,7 +33,9 @@ To download the project:
     
 To download dependencies:
     
-    python setup.py install
+    virtualenv /path/to/waybackscraper-venv
+    source /path/to/waybackscraper-venv/bin/activate
+    pip install -r requirements.txt
 
 ## Features
 

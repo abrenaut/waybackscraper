@@ -62,7 +62,7 @@ def main():
     to_date = datetime.strptime(args.to_date, CLI_DATE_FORMAT)
 
     # The scraper downloads the elements matching the given xpath expression in the target folder
-    scraper = Scraper(target_folder, args.xpath, args.user_agent)
+    scraper = Scraper(target_folder, args.xpath)
 
     # Launch the scraping using the scraper previously instantiated
     scrape_archives(args.website_url, scraper.scrape, from_date, to_date, args.user_agent, timedelta(days=args.delta),

@@ -7,46 +7,35 @@ from waybackscraper import wayback
 
 
 class TestWayback(unittest.TestCase):
-    def test_list_snapshots(self):
+    def test_list_archives_timestamp(self):
         """
-        Extract a list of memento from the resources/memento_list.txt file
+        Extract a list of memento timestamps from the resources/memento_list.txt file
         """
         # Mock the memento URL
-        wayback.WEB_ARCHIVE_CDX_TEMPLATE = 'file://{memento_list}'.format(
-                memento_list=os.path.abspath('resources/memento_list.json'))
+        wayback.WEB_ARCHIVE_CDX_TEMPLATE = 'file://' + os.path.abspath('resources/memento_list.json')
 
         # List the snapshot found in the test memento
-        snapshots = wayback.list_archives('', datetime(2015, 1, 1, 0, 0),
-                                          datetime(2017, 1, 1, 0, 0), '')
+        timestamps = wayback.list_archive_timestamps('', datetime(2015, 1, 1), datetime(2017, 1, 1), '')
 
-        self.assertEquals(len(snapshots), 840)
+        self.assertEquals(len(timestamps), 840)
 
-    def test_next_date_with_offset(self):
+    def test_timedelta_filter(self):
         """
-        Test the function that filters a list of archive to keep the one matching the given criteria
+        Test the function that makes sure there is a minimum time delta between each date in the given list
         """
-        archives = [
-            wayback.Archive('201601010000', ''),
-            wayback.Archive('201601050000', ''),
-            wayback.Archive('201601070000', ''),
-            wayback.Archive('201601100000', '')
-        ]
+        dates = [datetime(2016, 1, 1), datetime(2016, 1, 25), datetime(2016, 1, 15), datetime(2016, 1, 31)]
 
-        filtered_archives = [archive for archive in wayback.archive_delta_filter(archives, timedelta(days=2))]
+        filtered_dates = [archive for archive in wayback.timedelta_filter(dates, timedelta(days=16))]
 
-        self.assertEqual([archive.date for archive in filtered_archives],
-                         [datetime(2016, 1, 1, 0, 0), datetime(2016, 1, 5, 0, 0), datetime(2016, 1, 10, 0, 0)])
-
+        self.assertEqual(filtered_dates, [datetime(2016, 1, 1), datetime(2016, 1, 25)])
 
     def test_to_absolute_urls(self):
         """
         Test the function which prepends the Web Archive URL to each URLs found in a string
         """
-        archive = wayback.Archive('20160312140802', '')
-        archive_content = '<img id="featured-comic" src="/web/20160312140802im_/http://files.explosm.net/comics/lunarbabboon_02.jpg">'.encode(
-            'utf-8')
+        archive_timestamp = datetime(2016, 3, 12, 14, 8, 2)
+        archive_content = '<img src="/web/20160312140802im_/test.jpg">'
 
-        archive_content = wayback.to_absolute_urls(archive_content, archive)
+        archive_content = wayback.to_absolute_urls(archive_content, archive_timestamp)
 
-        self.assertEquals(archive_content.decode('utf-8'),
-                          '<img id="featured-comic" src="' + wayback.WEB_ARCHIVE_URL + '/web/20160312140802im_/http://files.explosm.net/comics/lunarbabboon_02.jpg">')
+        self.assertEquals(archive_content, '<img src="' + wayback.WEB_ARCHIVE_URL + '/web/20160312140802im_/test.jpg">')
