@@ -1,4 +1,4 @@
-# Wayback scraper
+# An amazing  Wayback scraper
 
 Scrapes a website archives on [The Wayback Machine](https://archive.org/web/) using Python's asyncio.
 
@@ -40,8 +40,8 @@ To download dependencies:
 ## Features
 
 * Download the archive of a Website using [The Wayback Machine](https://archive.org/web/)
-* Filter the downloaded archive using xpath expressions
-* If the xpath expression match images, download the images
+* Filter the downloaded archive using xpath expressions.
+* If the xpath expression match images, download the images.
     
 ## Usage
     
